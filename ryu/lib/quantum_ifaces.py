@@ -19,6 +19,11 @@ import logging
 from ryu.base import app_manager
 from ryu.controller import event
 
+#qos
+from ryu.controller import event, handler, network
+from landscape.sysinfo.network import Network
+from ryu.controller.dpset import PortState
+
 LOG = logging.getLogger(__name__)
 
 
@@ -65,6 +70,20 @@ class QuantumIfaces(app_manager.RyuApp, dict):
 
     def get_key(self, iface_id, key):
         return self[iface_id][key]
+        
+    #qos Send event to class QoS
+    def _update_qos(self, iface_id, key, value):
+        from ryu.app.qos_cn import QoS
+        self.send_event('QoS', QoS.EventRateLimitPort(iface_id, key, value))
+        
+    def _update_dscp(self, iface_id, key, value):
+        port = self.get_key(iface_id, 'ports')
+        dpid = port[0]['datapath_id']
+        name = port[0]['name']
+        ofport = port[0]['ofport']
+        from ryu.app.qos_cn import QoS
+        self.send_event('QoS', QoS.EventDscpPort(dpid, name, ofport, value))
+ 
 
     def _update_key(self, iface_id, key, value):
         if key == self.KEY_PORTS:
@@ -87,6 +106,13 @@ class QuantumIfaces(app_manager.RyuApp, dict):
         self._update_key(iface_id, key, value)
 
     def update_key(self, iface_id, key, value):
+        if key == 'rate_limit':
+            self._update_qos(iface_id, key, value)
+            return
+        elif key == 'dscp':
+            self._update_dscp(iface_id, key, value)
+            return
+
         iface = self.setdefault(iface_id, {})
         if key in iface:
             err = False

@@ -39,6 +39,14 @@ from ryu.ofproto import nx_match
 from ryu.lib import dpid as dpid_lib
 from ryu.lib import mac
 
+#qos
+from ryu.controller.dpset import EventPortBase
+from ryu.app.quantum_adapter import QuantumAdapter
+from ryu.ofproto import nx_match, ofproto_v1_0_parser, ofproto_v1_0
+from ryu.controller.handler import set_ev_cls
+from ryu.ofproto import ofproto_v1_0
+from ryu.controller.handler import MAIN_DISPATCHER
+from ryu.controller.handler import set_ev_cls
 
 def _is_reserved_port(ofproto, port_no):
     return port_no > ofproto.OFPP_MAX
@@ -62,6 +70,18 @@ class PortSet(app_manager.RyuApp):
     # Example: ports for VMs
     # there is a race condition between ofp port add/del event and
     # register network_id for the port.
+     
+    class EventTunnelPort(EventPortBase):
+        def __init__(self, dpid, port_no, remote_dpid, add_del):
+            super(PortSet.EventTunnelPort, self).__init__(dpid, port_no)
+            self.remote_dpid = remote_dpid
+            self.add_del = add_del
+
+        def __str__(self):
+            return ('EventTunnelPort<dpid %s port_no %d remote_dpid %s '
+                    'add_del %s>' %
+                    (dpid_lib.dpid_to_str(self.dpid), self.port_no,
+                     dpid_lib.dpid_to_str(self.remote_dpid), self.add_del))
 
     class EventTunnelKeyDel(event.EventBase):
         def __init__(self, tunnel_key):
@@ -89,6 +109,16 @@ class PortSet(app_manager.RyuApp):
                     (dpid_lib.dpid_to_str(self.dpid), self.port_no,
                      self.network_id, self.tunnel_key,
                      mac.haddr_to_str(self.mac_address), self.add_del))
+            
+    class EventQosPort(event.EventBase):
+        def __init__(self, port_id, key, value):
+            super(PortSet.EventQosPort, self).__init__()
+            self.port_id = port_id
+            self.key = key
+            self.value = value
+            
+        def __str__(self):
+            return ('EventQosPort')
 
     class EventTunnelPort(EventPortBase):
         def __init__(self, dpid, port_no, remote_dpid, add_del):
@@ -101,6 +131,17 @@ class PortSet(app_manager.RyuApp):
                     'add_del %s>' %
                     (dpid_lib.dpid_to_str(self.dpid), self.port_no,
                      dpid_lib.dpid_to_str(self.remote_dpid), self.add_del))
+            
+    class EventDscpPort(event.EventBase):
+        def __init__(self, dpid, name, ofport, dscp_value):
+            super(PortSet.EventDscpPort, self).__init__()
+            self.dpid = dpid
+            self.name = name
+            self.ofport = ofport
+            self.dscp_value = dscp_value
+
+        def __str__(self):
+            return ('EventDscpPort')
 
     def __init__(self, **kwargs):
         super(PortSet, self).__init__()
@@ -108,6 +149,15 @@ class PortSet(app_manager.RyuApp):
         self.tunnels = kwargs['tunnels']
         self.dpset = kwargs['dpset']
         app_manager.register_app(self)
+        
+        map(lambda ev_cls: self.register_observer(ev_cls, self.name),
+            [PortSet.EventQosPort, PortSet.EventDscpPort])
+    
+    def get_nw(self):
+        return self.nw
+    
+    def get_dpset(self):
+        return self.dpset
 
     def _check_link_state(self, dp, port_no, add_del):
         if add_del:
@@ -282,6 +332,40 @@ class PortSet(app_manager.RyuApp):
     def packet_in_handler(self, ev):
         # for debug
         self.send_event_to_observers(ev)
+                
+    from ryu.lib import quantum_ifaces
+    @handler.set_ev_handler(EventQosPort)
+    def qos_handler(self, ev):
+        port_to_update = "qvo" + ev.port_id[:11]
+        for dp in self.dpset.get_all(): # dp is a tuple of type: (dpid_A, Datapath_A). ryu.controller.controller.Datapath
+            for port in self.dpset.get_ports(dp[1].id): # port 
+                if port.name == port_to_update:
+                    self.send_event('QuantumAdapter', QuantumAdapter.ApplyRateLimit(port_to_update, ev.value, dp[1].id) ) #port_name, value, dpid
+                    print "Port %s e uguale a %s" % (port.name, port_to_update)
+                    return
+        print "port %s not found in any ovs bridge! " % port_to_update
+        
+    @handler.set_ev_handler(EventDscpPort)
+    def handle_dscp_port(self,ev):
+        print "handle dscp port"
+        dpid = ev.dpid
+        dp = self.dpset.get(dpid)
+        name =  ev.name
+        ofport = ev.ofport
+        dscp_value = ev.dscp_value
+        print self.dpset.get_port(dpid, ofport)
+        ofp_parser = dp.ofproto_parser
+        #req = ofp_parser.OFPFlowStatsRequest(dp, 0, ofp_parser.OFPMatch(), 0, 0xffff)
+        #dp.send_msg(req)
+        tunnel_key = self.tunnels.get_key(self.dpset.get_nw())
+        #set_tunnel = ofproto_parser.NXActionSetTunnel(tunnel_key)
+        set_tunnel = ofproto_v1_0_parser.NXActionSetTunnel(tunnel_key)
+        nw_tos = 2 << 2
+        add_dscp = ofproto_v1_0_parser.OFPActionSetNwTos(nw_tos) 
+        resubmit_table = ofproto_v1_0_parser.NXActionResubmitTable(
+            in_port=ofproto_v1_0.OFPP_IN_PORT, table=self.TUNNEL_OUT_TABLE)  
+        actions = [set_tunnel, add_dscp, resubmit_table]
+
 
 
 def cls_rule(in_port=None, tun_id=None, dl_src=None, dl_dst=None):
@@ -978,3 +1062,7 @@ class GRETunnel(app_manager.RyuApp):
         self.logger.debug('packet in ev %s msg %s', ev, ev.msg)
         if msg.buffer_id != msg.datapath.ofproto.OFP_NO_BUFFER:
             msg.datapath.send_packet_out(msg.buffer_id, msg.in_port, [])
+            
+    @handler.set_ev_handler(PortSet.EventDscpPort)
+    def handler_dscpPort(self, ev):
+        print "handle dscp port in gretunnel"

@@ -246,6 +246,13 @@ class QuantumIfaceClientV1_0(RyuClientBase):
 
     def update_network_id(self, iface_id, network_id):
         self.update_key(iface_id, 'network_id', network_id)
+        
+    def update_rate_limit(self, iface_id, rate):
+        self.update_key(iface_id, 'rate_limit', rate)
+        
+    def update_dscp(self, iface_id, value):
+        self.update_key(iface_id, 'dscp', value)
+
 
 
 QuantumIfaceClient = QuantumIfaceClientV1_0
