@@ -184,6 +184,47 @@ class OVSBridge(object):
             'set', ('Interface', name,
                     'type=%s' % tunnel_type, 'options=%s' % options))
         self.run_command([command_add, command_set])
+        
+        
+##############qos
+
+    #Rate in kb
+    def add_rate_limit(self, name, rate):
+        burst_percent = 0.1
+        rate_kb = int(rate)
+        rate_bit = int(rate)*1000
+        burst_rate_kb = int(rate_kb * burst_percent)
+        
+        command_burst = ovs_vsctl.VSCtlCommand(
+            'set', ('Interface', name,
+                    'ingress_policing_burst=%i' % burst_rate_kb))
+        command_rate = ovs_vsctl.VSCtlCommand(
+            'set', ('Interface', name,
+                    'ingress_policing_rate=%i' % rate_kb))
+        self.run_command([command_rate])
+        self.run_command([command_burst])
+        
+        #ovs-vsctl -- set port qvob820b227-fa qos=@newqos \
+        #-- --id=@newqos create qos type=linux-htb \
+        #other-config:max-rate=1000000 queues:0=@newqueue \
+        #-- --id=@newqueue create queue \
+        #other-config:min-rate=1000000 \
+        #other-config:max-rate=1000000
+        
+        queue_config = []
+        config = {}
+        
+        #min and max are both in bit per second
+        max_rate = str(rate_bit)
+        min_rate = str(rate_bit)
+        config['max-rate'] = max_rate
+        config['min-rate'] = min_rate
+        
+        queue_config.append(config)
+        
+        self.set_qos(name, 'linux-htb', str(rate_bit), queue_config)
+        
+##############
 
     def add_gre_port(self, name, local_ip, remote_ip, key=None):
         self.add_tunnel_port(name, 'gre', local_ip, remote_ip, key=key)

@@ -41,12 +41,13 @@ from ryu.base import app_manager
 from ryu.controller import (conf_switch,
                             dpset,
                             handler,
-                            network)
+                            network,
+                            event) #qos
 from ryu import exception as ryu_exc
 from ryu.lib import dpid as dpid_lib
 from ryu.lib import mac as mac_lib
 from ryu.lib import quantum_ifaces
-from ryu.lib.ovs import bridge
+from ryu.lib.ovs import bridge, vsctl #qos
 from ryu.lib.quantum_ifaces import QuantumIfaces
 
 
@@ -337,6 +338,21 @@ class QuantumAdapter(app_manager.RyuApp):
         'network': network.Network,
         'quantum_ifaces': quantum_ifaces.QuantumIfaces,
     }
+      
+    _port_list = {}
+    
+    class ApplyRateLimit(event.EventBase):
+        def __init__(self, port_name, value, dpid):
+            super(QuantumAdapter.ApplyRateLimit, self).__init__()
+            self.port_name = port_name
+            self.value = value
+            self.dpid = dpid
+
+        def __str__(self):
+            return 'ApplyRateLimit at port %s of ovs with dpid %s' % (self.port_name, self.dpid)
+    
+    def __init__(self, *_args, **kwargs):
+         super(QuantumAdapter, self).__init__()
 
     def __init__(self, *_args, **kwargs):
         super(QuantumAdapter, self).__init__()
@@ -350,6 +366,30 @@ class QuantumAdapter(app_manager.RyuApp):
             if network_id == rest_nw_id.NW_ID_UNKNOWN:
                 continue
             self.nw.update_network(network_id)
+#qos
+        map(lambda ev_cls: self.register_observer(ev_cls, self.name),
+            [QuantumAdapter.ApplyRateLimit])
+        
+    @handler.set_ev_handler(ApplyRateLimit)
+    def applyRateLimit_handler(self, ev):
+        ovs = self._get_ovs_switch(ev.dpid, False)
+        if not ovs:
+            print "Error: impossible to found OVS isntance with dpid %s" % ev.dpid
+            return
+        else:
+            print "OVS found. update rate_limit"
+            ovs.ovs_bridge.add_rate_limit(ev.port_name, ev.value)
+            #self.ovs_bridge.add_rate_limit(port.name, 1000)
+  
+    #add a port to a simple database        
+    def add_port_to_qa_db(self, dpid, port):
+        #if dpid in __port_list:
+        QuantumAdapter._port_list[dpid] = list.append(port)
+        #else
+    
+    def get_port_list_qa_db(self):
+        return QuantumAdapter._port_list
+    #####qos
 
     def _get_ovs_switch(self, dpid, create=True):
         ovs_switch = self.dps.get(dpid)
