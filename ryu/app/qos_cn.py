@@ -142,6 +142,7 @@ class QoS(app_manager.RyuApp):
     
     @handler.set_ev_handler(EventRateLimitPort)
     def rate_limit_handler(self, ev):
+        in_out = ev.key
         port_to_update = "qvo" + ev.port_id[:11]
         for dp in self.dpset.get_all(): # dp is a tuple of type: (dpid_A, Datapath_A). ryu.controller.controller.Datapath
             dpid = dp[1].id
@@ -152,8 +153,8 @@ class QoS(app_manager.RyuApp):
                         print "Error: impossible to found OVS instance with dpid %s" % dpid
                         return
                     else:
-                        print "OVS found. update rate_limit"
-                        ovs.ovs_bridge.add_rate_limit(port_to_update, ev.value)
+                        print "OVS found. update rate_limit. qos_cn"
+                        ovs.ovs_bridge.add_rate_limit(port_to_update, ev.value, in_out)
                     return
         print "port %s not found in any ovs bridge! " % port_to_update
 

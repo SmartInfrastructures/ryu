@@ -106,7 +106,7 @@ class QuantumIfaces(app_manager.RyuApp, dict):
         self._update_key(iface_id, key, value)
 
     def update_key(self, iface_id, key, value):
-        if key == 'rate_limit':
+        if key == 'ingress_rate' or key == 'egress_rate':
             self._update_qos(iface_id, key, value)
             return
         elif key == 'dscp':

@@ -216,6 +216,7 @@ class QuantumIfaceClientV1_0(RyuClientBase):
     path_key = path_keys + '/%(key)s'
     path_value = path_key + '/%(value)s'
 
+
     def __init__(self, address):
         super(QuantumIfaceClientV1_0, self).__init__(self.version, address)
 
@@ -234,8 +235,8 @@ class QuantumIfaceClientV1_0(RyuClientBase):
     def create_key(self, iface_id, key, value):
         self._do_request('POST', self.path_value % locals())
 
-    def update_key(self, iface_id, key, value):
-        self._do_request('PUT', self.path_value % locals())
+    def update_key(self, iface_id, key, value, body={}):
+        self._do_request('PUT', self.path_value % locals(), body) 
 
     # for convenience
     def get_network_id(self, iface_id):
@@ -247,12 +248,16 @@ class QuantumIfaceClientV1_0(RyuClientBase):
     def update_network_id(self, iface_id, network_id):
         self.update_key(iface_id, 'network_id', network_id)
         
-    def update_rate_limit(self, iface_id, rate):
-        self.update_key(iface_id, 'rate_limit', rate)
+    def update_rate_limit(self, iface_id, rate, in_out=None, burst_percent = 0.3):
+        if in_out == 'ingress_rate':
+            self.update_key(iface_id, 'ingress_rate', rate, {'burst_percent': int(burst_percent*1000)})
+        elif in_out == 'egress_rate':
+            self.update_key(iface_id, 'egress_rate', rate, {'burst_percent': int(burst_percent*1000)})
+        else:
+            print "Rate_limit not valid"
         
     def update_dscp(self, iface_id, value):
-        self.update_key(iface_id, 'dscp', value)
-
+        self.update_key(iface_id, 'dscp', value) 
 
 
 QuantumIfaceClient = QuantumIfaceClientV1_0

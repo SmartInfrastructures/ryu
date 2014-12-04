@@ -377,7 +377,7 @@ class QuantumAdapter(app_manager.RyuApp):
             print "Error: impossible to found OVS isntance with dpid %s" % ev.dpid
             return
         else:
-            print "OVS found. update rate_limit"
+            print "OVS found. update rate_limit. quantum_adapter"
             ovs.ovs_bridge.add_rate_limit(ev.port_name, ev.value)
             #self.ovs_bridge.add_rate_limit(port.name, 1000)
   
