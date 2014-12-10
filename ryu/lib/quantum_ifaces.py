@@ -20,7 +20,6 @@ from ryu.base import app_manager
 
 #qos
 from ryu.controller import event, handler, network
-from landscape.sysinfo.network import Network
 from ryu.controller.dpset import PortState
 
 LOG = logging.getLogger(__name__)
