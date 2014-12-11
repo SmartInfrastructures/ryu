@@ -17,7 +17,10 @@
 import logging
 
 from ryu.base import app_manager
-from ryu.controller import event
+
+#qos
+from ryu.controller import event, handler, network
+from ryu.controller.dpset import PortState
 
 #qos
 from ryu.controller import event, handler, network
